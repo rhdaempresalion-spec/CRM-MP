@@ -38,15 +38,35 @@ async function gerarPixMP({ valor, nome, email, telefone, documento, referencia 
   }
 
   // Limpar telefone (apenas números)
-  const telLimpo = (telefone || '11999999999').replace(/[^0-9]/g, '');
+  let telLimpo = (telefone || '11999999999').replace(/[^0-9]/g, '');
 
-  // Formatar telefone
+  // Remover código do país 55 se presente
+  // Ex: 5511999999999 (13 dígitos) -> 11999999999 (11 dígitos)
+  // Ex: 551199999999 (12 dígitos) -> 1199999999 (10 dígitos)
+  if (telLimpo.length === 13 && telLimpo.startsWith('55')) {
+    telLimpo = telLimpo.substring(2); // Remove o 55 -> fica 11 dígitos
+  } else if (telLimpo.length === 12 && telLimpo.startsWith('55')) {
+    telLimpo = telLimpo.substring(2); // Remove o 55 -> fica 10 dígitos
+  }
+
+  // Formatar telefone no padrão (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+  // A API PagamentosMP exige formato brasileiro: (11) 99999-9999
   let telFormatado = telLimpo;
   if (telLimpo.length === 11) {
+    // Celular: (XX) XXXXX-XXXX
     telFormatado = `(${telLimpo.substring(0, 2)}) ${telLimpo.substring(2, 7)}-${telLimpo.substring(7)}`;
   } else if (telLimpo.length === 10) {
+    // Fixo: (XX) XXXX-XXXX
     telFormatado = `(${telLimpo.substring(0, 2)}) ${telLimpo.substring(2, 6)}-${telLimpo.substring(6)}`;
+  } else if (telLimpo.length === 9) {
+    // Só o número sem DDD - assume DDD 11
+    telFormatado = `(11) ${telLimpo.substring(0, 5)}-${telLimpo.substring(5)}`;
+  } else if (telLimpo.length === 8) {
+    // Fixo sem DDD - assume DDD 11
+    telFormatado = `(11) ${telLimpo.substring(0, 4)}-${telLimpo.substring(4)}`;
   }
+
+  console.log(`[MP] Telefone original: ${telefone} -> Limpo: ${telLimpo} -> Formatado: ${telFormatado}`);
 
   // Gerar identificador único
   const identifier = `PIXAUTO-${referencia}-${Date.now()}`;
