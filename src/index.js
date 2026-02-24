@@ -2,9 +2,8 @@ try { require('dotenv').config(); } catch(e) { /* .env não encontrado, usando v
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { gerarPixMP, verificarTransacaoMP } = require('./mp-service');
+const { gerarPixMP } = require('./mp-service');
 const { enviarParaCRM } = require('./crm-service');
-const { registrarPixParaMonitorar, getStatusMonitor } = require('./monitor-service');
 
 // Capturar erros não tratados
 process.on('uncaughtException', (err) => {
@@ -39,23 +38,21 @@ app.use((req, res, next) => {
 });
 
 // ============================================================
-// ROTA PRINCIPAL - Health Check
+// ROTA PRINCIPAL - Página de demonstração
 // ============================================================
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 // ============================================================
-// ROTA: Health Check detalhado
+// ROTA: Health Check
 // ============================================================
 app.get('/health', (req, res) => {
-  const monitor = getStatusMonitor();
   res.json({
     status: 'ok',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     memory: process.memoryUsage(),
-    monitor: monitor,
     env: {
       mp_configured: !!(process.env.MP_PUBLIC_KEY && process.env.MP_SECRET_KEY),
       crm_configured: !!process.env.CRM_WEBHOOK_URL,
@@ -65,19 +62,8 @@ app.get('/health', (req, res) => {
 });
 
 // ============================================================
-// ROTA: Status do monitor de pagamentos
-// ============================================================
-app.get('/api/monitor', (req, res) => {
-  const monitor = getStatusMonitor();
-  res.json({
-    sucesso: true,
-    monitor: monitor
-  });
-});
-
-// ============================================================
-// ROTA: Receber webhook do CRM e gerar PIX automaticamente
-// Esta é a rota principal que o CRM vai chamar
+// ROTA: Receber webhook do CRM e gerar PIX NOVO automaticamente
+// Cada requisição SEMPRE gera um PIX novo e único para o lead
 // ============================================================
 app.post('/webhook', async (req, res) => {
   console.log('========================================');
@@ -92,14 +78,17 @@ app.post('/webhook', async (req, res) => {
     const email = dados.email || dados.customer_email || dados.contact_email || 'cliente@email.com';
     const telefone = dados.telefone || dados.phone || dados.customer_phone || dados.contact_phone || '11999999999';
     const documento = dados.documento || dados.cpf || dados.document || dados.customer_document || '00000000000';
-    const referencia = dados.referencia || dados.reference || dados.id || dados.lead_id || `CRM-${Date.now()}`;
     const numero_do_lead = dados.numero_do_lead || dados.telefone || dados.phone || '';
+
+    // Referência única para cada PIX gerado (garante que nunca reutiliza)
+    const referencia = `CRM-${numero_do_lead}-${Date.now()}`;
 
     // Valor em reais (PagamentosMP usa reais, não centavos)
     const valorReais = parseFloat(process.env.PIX_VALOR) || 12.90;
 
-    console.log(`[PIX] Gerando PIX de R$ ${valorReais.toFixed(2)} para ${nome}`);
+    console.log(`[PIX] Gerando PIX NOVO de R$ ${valorReais.toFixed(2)} para ${nome} (Lead: ${numero_do_lead})`);
 
+    // SEMPRE gera um PIX novo na API PagamentosMP
     const resultadoPix = await gerarPixMP({
       valor: valorReais,
       nome,
@@ -110,7 +99,7 @@ app.post('/webhook', async (req, res) => {
     });
 
     if (resultadoPix.sucesso) {
-      console.log('[PIX] PIX gerado com sucesso!');
+      console.log('[PIX] PIX NOVO gerado com sucesso!');
       console.log('[PIX] Código copia e cola:', resultadoPix.dados.pixCopiaCola);
       console.log('[PIX] Transaction ID:', resultadoPix.dados.transactionId);
 
@@ -140,25 +129,10 @@ app.post('/webhook', async (req, res) => {
       // Enviar para o webhook do CRM
       try {
         await enviarParaCRM(dadosCRM);
-        console.log('[CRM] Dados enviados para o CRM com sucesso!');
+        console.log('[CRM] Dados do PIX NOVO enviados para o CRM com sucesso!');
       } catch (crmError) {
         console.error('[CRM] Erro ao enviar para CRM:', crmError.message);
       }
-
-      // ============================================================
-      // REGISTRAR PIX PARA MONITORAMENTO AUTOMÁTICO
-      // O monitor vai ficar verificando se foi pago
-      // Quando pagar, envia para o webhook de confirmação
-      // ============================================================
-      registrarPixParaMonitorar({
-        transactionId: resultadoPix.dados.transactionId,
-        numero_do_lead: numero_do_lead,
-        pix_copia_cola: resultadoPix.dados.pixCopiaCola,
-        qrcode_imagem: qrcodeImagem,
-        qrcode_url: resultadoPix.dados.qrcodeUrl,
-        valor: `R$ ${valorReais.toFixed(2)}`,
-        expiracao: resultadoPix.dados.expirationDate
-      });
 
       // Retornar resposta com o PIX
       return res.status(200).json({
@@ -196,9 +170,10 @@ app.post('/webhook', async (req, res) => {
 
 // ============================================================
 // ROTA: Gerar PIX via API (chamada direta)
+// Também SEMPRE gera um PIX novo
 // ============================================================
 app.post('/api/gerar-pix', async (req, res) => {
-  console.log('[API] Requisição para gerar PIX recebida');
+  console.log('[API] Requisição para gerar PIX NOVO recebida');
 
   try {
     const dados = req.body;
@@ -207,8 +182,10 @@ app.post('/api/gerar-pix', async (req, res) => {
     const email = dados.email || 'cliente@email.com';
     const telefone = dados.telefone || dados.phone || '11999999999';
     const documento = dados.documento || dados.cpf || '00000000000';
-    const referencia = dados.referencia || dados.reference || `API-${Date.now()}`;
     const numero_do_lead = dados.numero_do_lead || dados.telefone || dados.phone || '';
+
+    // Referência única
+    const referencia = `API-${numero_do_lead}-${Date.now()}`;
 
     // Valor em reais
     const valorReais = parseFloat(process.env.PIX_VALOR) || 12.90;
@@ -247,21 +224,10 @@ app.post('/api/gerar-pix', async (req, res) => {
 
       try {
         await enviarParaCRM(dadosCRM);
-        console.log('[CRM] Dados enviados para o CRM com sucesso!');
+        console.log('[CRM] Dados do PIX NOVO enviados para o CRM com sucesso!');
       } catch (crmError) {
         console.error('[CRM] Erro ao enviar para CRM:', crmError.message);
       }
-
-      // Registrar para monitoramento automático
-      registrarPixParaMonitorar({
-        transactionId: resultadoPix.dados.transactionId,
-        numero_do_lead: numero_do_lead,
-        pix_copia_cola: resultadoPix.dados.pixCopiaCola,
-        qrcode_imagem: qrcodeImagem,
-        qrcode_url: resultadoPix.dados.qrcodeUrl,
-        valor: `R$ ${valorReais.toFixed(2)}`,
-        expiracao: resultadoPix.dados.expirationDate
-      });
 
       return res.status(200).json({
         sucesso: true,
@@ -296,38 +262,7 @@ app.post('/api/gerar-pix', async (req, res) => {
 });
 
 // ============================================================
-// ROTA: Verificar status de uma transação
-// ============================================================
-app.get('/api/status/:transactionId', async (req, res) => {
-  try {
-    const { transactionId } = req.params;
-
-    const data = await verificarTransacaoMP(transactionId);
-
-    // Mapear status da PagamentosMP
-    let statusMapeado = data.status;
-    const pago = data.status === 'COMPLETED';
-
-    return res.json({
-      sucesso: true,
-      transactionId: transactionId,
-      status: statusMapeado,
-      statusOriginal: data.status,
-      pago: pago,
-      dados: data
-    });
-  } catch (error) {
-    console.error('[STATUS] Erro:', error.message);
-    return res.status(500).json({
-      sucesso: false,
-      erro: 'Erro ao verificar status',
-      detalhes: error.message
-    });
-  }
-});
-
-// ============================================================
-// ROTA: Webhook de notificação de pagamento (callback da PagamentosMP)
+// ROTA: Callback da PagamentosMP (notificação de pagamento)
 // ============================================================
 app.post('/webhook/mp-callback', async (req, res) => {
   console.log('========================================');
@@ -367,20 +302,12 @@ app.post('/webhook/mp-callback', async (req, res) => {
   }
 });
 
-// Manter compatibilidade com a rota antiga do DHR postback
-app.post('/webhook/dhr-postback', async (req, res) => {
-  console.log('[LEGACY] Redirecionando dhr-postback para mp-callback');
-  // Redirecionar para o novo handler
-  req.url = '/webhook/mp-callback';
-  app.handle(req, res);
-});
-
 // ============================================================
 // INICIAR SERVIDOR
 // ============================================================
 app.listen(PORT, '0.0.0.0', () => {
   console.log('============================================');
-  console.log(`  PIX Webhook Backend v3.0.0 (PagamentosMP)`);
+  console.log(`  PIX Webhook Backend v4.0.0 (PagamentosMP)`);
   console.log(`  Servidor rodando na porta ${PORT}`);
   console.log(`  Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`  API: ${process.env.MP_API_URL || 'https://app.pagamentosmp.com/api/v1'}`);
@@ -388,15 +315,12 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('============================================');
   console.log('Endpoints disponíveis:');
   console.log(`  GET  /                    - Página de demonstração`);
-  console.log(`  GET  /health              - Status detalhado + monitor`);
-  console.log(`  POST /webhook             - Receber webhook do CRM`);
-  console.log(`  POST /api/gerar-pix       - Gerar PIX via API`);
-  console.log(`  GET  /api/status/:id      - Verificar pagamento`);
-  console.log(`  GET  /api/monitor         - Status do monitor de pagamentos`);
+  console.log(`  GET  /health              - Status do servidor`);
+  console.log(`  POST /webhook             - Receber webhook do CRM e gerar PIX NOVO`);
+  console.log(`  POST /api/gerar-pix       - Gerar PIX NOVO via API`);
   console.log(`  POST /webhook/mp-callback - Callback PagamentosMP`);
   console.log('============================================');
-  console.log('[MONITOR] Sistema de monitoramento de pagamentos ATIVO');
-  console.log('[MONITOR] Verificação a cada 15 segundos');
-  console.log('[MONITOR] Ao confirmar pagamento, envia para webhook de confirmação');
+  console.log('[INFO] Cada requisição SEMPRE gera um PIX novo e único');
+  console.log('[INFO] Sem cache, sem monitoramento, sem reutilização');
   console.log('============================================');
 });

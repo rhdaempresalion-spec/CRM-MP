@@ -147,7 +147,7 @@
     </div>
     
     <h1>Gerador de PIX</h1>
-    <p class="subtitle">Sistema automático de geração de PIX via PagamentosMP</p>
+    <p class="subtitle">Cada requisição gera um PIX novo e único</p>
 
     <div class="valor-display">
       <div class="label">Valor do PIX</div>
@@ -183,12 +183,12 @@
       <p>1. Preencha os dados do cliente</p>
       <p>2. Clique em "Gerar PIX"</p>
       <p>3. O sistema gera o PIX via API PagamentosMP e envia para o CRM</p>
-      <p>4. O código PIX copia e cola é exibido na tela</p>
+      <p>4. O código PIX copia e cola é enviado de volta ao CRM</p>
       <br>
       <p><strong>Endpoints:</strong></p>
       <p><code>POST /webhook</code> - Receber webhook do CRM</p>
       <p><code>POST /api/gerar-pix</code> - Gerar PIX via API</p>
-      <p><code>GET /api/status/:id</code> - Verificar pagamento</p>
+
       <p><code>POST /webhook/mp-callback</code> - Callback PagamentosMP</p>
     </div>
   </div>

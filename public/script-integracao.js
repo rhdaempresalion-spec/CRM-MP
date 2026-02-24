@@ -3,10 +3,8 @@
  * SCRIPT DE INTEGRAÇÃO - Gerador de PIX via PagamentosMP
  * ============================================================
  * 
- * Este script deve ser incluído na sua página/automação.
- * Quando o usuário clicar em "Gerar PIX", ele envia uma
- * requisição para o webhook que gera o PIX automaticamente
- * e retorna o código copia e cola.
+ * Este script gera um PIX NOVO a cada requisição.
+ * Sem cache, sem monitoramento, sem reutilização.
  * 
  * COMO USAR:
  * 1. Inclua este script na sua página HTML
@@ -17,54 +15,29 @@
  */
 
 // ============================================================
-// CONFIGURAÇÃO - Altere a URL para o seu servidor no Railway
+// CONFIGURAÇÃO
 // ============================================================
 const CONFIG = {
-  // URL do seu backend hospedado no Railway
-  // Altere para a URL real após o deploy
-  URL_BACKEND: window.PIX_BACKEND_URL || 'https://seu-app.up.railway.app',
-  
-  // Webhook do CRM DataCrazy (usado como fallback direto)
-  WEBHOOK_CRM: 'https://api.datacrazy.io/v1/crm/api/crm/flows/webhooks/a3161e6d-6f4d-4b16-a1b5-16bcb9641994/f60b9be2-97e9-41c1-b618-d98b67174ec7',
-  
-  // Intervalo de verificação de pagamento (ms)
-  INTERVALO_VERIFICACAO: 5000,
-  
-  // Tempo máximo de verificação (ms) - 30 minutos
-  TIMEOUT_VERIFICACAO: 1800000
+  URL_BACKEND: window.PIX_BACKEND_URL || 'https://seu-app.up.railway.app'
 };
 
 // ============================================================
-// FUNÇÃO PRINCIPAL: Gerar PIX
+// FUNÇÃO PRINCIPAL: Gerar PIX NOVO
 // ============================================================
-
-/**
- * Gera um PIX enviando requisição ao webhook
- * 
- * @param {Object} dadosCliente - Dados do cliente (opcional)
- * @param {string} dadosCliente.nome - Nome do cliente
- * @param {string} dadosCliente.email - Email do cliente
- * @param {string} dadosCliente.telefone - Telefone do cliente
- * @param {string} dadosCliente.documento - CPF/CNPJ do cliente
- * @returns {Promise<Object>} Resultado com o código PIX
- */
 async function gerarPix(dadosCliente = {}) {
-  console.log('[PIX] Iniciando geração de PIX via PagamentosMP...');
+  console.log('[PIX] Gerando PIX NOVO via PagamentosMP...');
   
-  // Montar payload
   const payload = {
     nome: dadosCliente.nome || 'Cliente',
     email: dadosCliente.email || 'cliente@email.com',
     telefone: dadosCliente.telefone || '11999999999',
     documento: dadosCliente.documento || dadosCliente.cpf || '00000000000',
-    referencia: dadosCliente.referencia || `WEB-${Date.now()}`,
+    numero_do_lead: dadosCliente.numero_do_lead || dadosCliente.telefone || '',
     origem: 'javascript_integracao',
     timestamp: new Date().toISOString()
   };
 
   try {
-    // Enviar para o backend (recomendado)
-    // O backend gera o PIX via PagamentosMP e envia para o CRM automaticamente
     const response = await fetch(`${CONFIG.URL_BACKEND}/webhook`, {
       method: 'POST',
       headers: {
@@ -76,7 +49,7 @@ async function gerarPix(dadosCliente = {}) {
     const resultado = await response.json();
 
     if (resultado.sucesso && resultado.pix) {
-      console.log('[PIX] PIX gerado com sucesso!');
+      console.log('[PIX] PIX NOVO gerado com sucesso!');
       console.log('[PIX] Código copia e cola:', resultado.pix.copia_cola);
       
       return {
@@ -97,50 +70,26 @@ async function gerarPix(dadosCliente = {}) {
     }
   } catch (error) {
     console.error('[PIX] Erro na requisição:', error.message);
-    
-    // Fallback - enviar direto para o webhook do CRM
-    console.log('[PIX] Tentando fallback via webhook CRM...');
-    try {
-      const fallbackResponse = await fetch(CONFIG.WEBHOOK_CRM, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...payload,
-          acao: 'gerar_pix',
-          fallback: true
-        })
-      });
-
-      const fallbackResult = await fallbackResponse.json();
-      return {
-        sucesso: true,
-        dados: fallbackResult,
-        via: 'fallback_crm'
-      };
-    } catch (fallbackError) {
-      return {
-        sucesso: false,
-        erro: 'Não foi possível gerar o PIX. Tente novamente.',
-        detalhes: error.message
-      };
-    }
+    return {
+      sucesso: false,
+      erro: 'Não foi possível gerar o PIX. Tente novamente.',
+      detalhes: error.message
+    };
   }
 }
 
 // ============================================================
-// FUNÇÃO: Gerar PIX via API direta do backend
+// FUNÇÃO: Gerar PIX via API direta
 // ============================================================
 async function gerarPixViaAPI(dadosCliente = {}) {
-  console.log('[PIX API] Gerando PIX via endpoint /api/gerar-pix...');
+  console.log('[PIX API] Gerando PIX NOVO via /api/gerar-pix...');
   
   const payload = {
     nome: dadosCliente.nome || 'Cliente',
     email: dadosCliente.email || 'cliente@email.com',
     telefone: dadosCliente.telefone || '11999999999',
     documento: dadosCliente.documento || '00000000000',
-    referencia: dadosCliente.referencia || `API-${Date.now()}`
+    numero_do_lead: dadosCliente.numero_do_lead || dadosCliente.telefone || ''
   };
 
   try {
@@ -179,72 +128,6 @@ async function gerarPixViaAPI(dadosCliente = {}) {
 }
 
 // ============================================================
-// FUNÇÃO: Verificar status do pagamento
-// ============================================================
-async function verificarPagamento(transactionId) {
-  try {
-    const response = await fetch(`${CONFIG.URL_BACKEND}/api/status/${transactionId}`);
-    const resultado = await response.json();
-    
-    return {
-      sucesso: true,
-      pago: resultado.pago || false,
-      status: resultado.status,
-      dados: resultado
-    };
-  } catch (error) {
-    return {
-      sucesso: false,
-      erro: error.message
-    };
-  }
-}
-
-// ============================================================
-// FUNÇÃO: Monitorar pagamento automaticamente
-// ============================================================
-function monitorarPagamento(transactionId, callbacks = {}) {
-  const { onPago, onPendente, onErro, onTimeout } = callbacks;
-  let tentativas = 0;
-  const maxTentativas = CONFIG.TIMEOUT_VERIFICACAO / CONFIG.INTERVALO_VERIFICACAO;
-
-  console.log(`[MONITOR] Iniciando monitoramento do pagamento ${transactionId}`);
-
-  const intervalo = setInterval(async () => {
-    tentativas++;
-    
-    if (tentativas > maxTentativas) {
-      clearInterval(intervalo);
-      console.log('[MONITOR] Timeout - pagamento não confirmado');
-      if (onTimeout) onTimeout();
-      return;
-    }
-
-    try {
-      const resultado = await verificarPagamento(transactionId);
-      
-      if (resultado.sucesso && resultado.pago) {
-        clearInterval(intervalo);
-        console.log('[MONITOR] Pagamento confirmado!');
-        if (onPago) onPago(resultado);
-      } else {
-        console.log(`[MONITOR] Verificação ${tentativas} - Aguardando pagamento...`);
-        if (onPendente) onPendente(tentativas);
-      }
-    } catch (error) {
-      console.error('[MONITOR] Erro na verificação:', error);
-      if (onErro) onErro(error);
-    }
-  }, CONFIG.INTERVALO_VERIFICACAO);
-
-  // Retorna função para cancelar o monitoramento
-  return () => {
-    clearInterval(intervalo);
-    console.log('[MONITOR] Monitoramento cancelado');
-  };
-}
-
-// ============================================================
 // FUNÇÃO: Copiar código PIX para a área de transferência
 // ============================================================
 async function copiarPix(codigoPix) {
@@ -253,7 +136,6 @@ async function copiarPix(codigoPix) {
     console.log('[PIX] Código copiado para a área de transferência');
     return true;
   } catch (error) {
-    // Fallback para navegadores mais antigos
     const textarea = document.createElement('textarea');
     textarea.value = codigoPix;
     textarea.style.position = 'fixed';
@@ -274,33 +156,21 @@ async function copiarPix(codigoPix) {
 }
 
 // ============================================================
-// EXEMPLO DE USO COMPLETO
+// VINCULAR AO BOTÃO DA PÁGINA
 // ============================================================
-
-/**
- * Exemplo: Vincular ao botão "Gerar PIX"
- * 
- * Adicione no seu HTML:
- * <button id="btn-gerar-pix">Gerar PIX R$ 12,90</button>
- * <div id="pix-resultado"></div>
- * 
- * E este script fará o resto automaticamente.
- */
 document.addEventListener('DOMContentLoaded', function() {
   const btnGerarPix = document.getElementById('btn-gerar-pix');
   const pixResultado = document.getElementById('pix-resultado');
 
   if (btnGerarPix) {
     btnGerarPix.addEventListener('click', async function() {
-      // Desabilitar botão durante o processamento
       btnGerarPix.disabled = true;
-      btnGerarPix.textContent = 'Gerando PIX...';
+      btnGerarPix.textContent = 'Gerando PIX NOVO...';
 
       if (pixResultado) {
-        pixResultado.innerHTML = '<p style="color: #666;">Gerando seu PIX via PagamentosMP, aguarde...</p>';
+        pixResultado.innerHTML = '<p style="color: #666;">Gerando seu PIX NOVO via PagamentosMP, aguarde...</p>';
       }
 
-      // Coletar dados do formulário (se existir)
       const dadosCliente = {
         nome: document.getElementById('input-nome')?.value || 'Cliente',
         email: document.getElementById('input-email')?.value || 'cliente@email.com',
@@ -308,17 +178,15 @@ document.addEventListener('DOMContentLoaded', function() {
         documento: document.getElementById('input-cpf')?.value || '00000000000'
       };
 
-      // Gerar o PIX
       const resultado = await gerarPix(dadosCliente);
 
       if (resultado.sucesso) {
-        // Exibir o resultado
         if (pixResultado) {
           const qrcodeImg = resultado.qrcodeBase64 || resultado.qrcodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(resultado.pixCopiaCola)}`;
           
           pixResultado.innerHTML = `
-            <div style="background: #f0f9f0; border: 2px solid #4CAF50; border-radius: 12px; padding: 24px; text-align: center; max-width: 500px; margin: 20px auto;">
-              <h3 style="color: #2e7d32; margin-bottom: 16px;">PIX Gerado com Sucesso!</h3>
+            <div style="background: #e8f5e9; border: 2px solid #4CAF50; border-radius: 12px; padding: 24px; text-align: center; margin-top: 16px;">
+              <h3 style="color: #2e7d32; margin-bottom: 16px;">PIX NOVO Gerado com Sucesso!</h3>
               <p style="font-size: 18px; font-weight: bold; color: #333;">Valor: ${resultado.valor || 'R$ 12,90'}</p>
               
               <div style="margin: 20px 0;">
@@ -341,30 +209,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
           `;
         }
-
-        // Iniciar monitoramento de pagamento
-        if (resultado.transactionId) {
-          monitorarPagamento(resultado.transactionId, {
-            onPago: (dados) => {
-              if (pixResultado) {
-                pixResultado.innerHTML += `
-                  <div style="background: #e8f5e9; border: 2px solid #4CAF50; border-radius: 12px; padding: 20px; text-align: center; margin-top: 16px;">
-                    <h3 style="color: #2e7d32;">Pagamento Confirmado!</h3>
-                    <p>Seu pagamento foi recebido com sucesso.</p>
-                  </div>
-                `;
-              }
-            },
-            onPendente: (tentativa) => {
-              console.log(`Verificação ${tentativa} - Aguardando pagamento...`);
-            },
-            onTimeout: () => {
-              console.log('Tempo de verificação expirado');
-            }
-          });
-        }
       } else {
-        // Exibir erro
         if (pixResultado) {
           pixResultado.innerHTML = `
             <div style="background: #fce4ec; border: 2px solid #f44336; border-radius: 12px; padding: 24px; text-align: center;">
@@ -378,7 +223,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
 
-      // Reabilitar botão
       btnGerarPix.disabled = false;
       btnGerarPix.textContent = 'Gerar PIX R$ 12,90';
     });
@@ -391,11 +235,9 @@ document.addEventListener('DOMContentLoaded', function() {
 window.PixIntegracao = {
   gerarPix,
   gerarPixViaAPI,
-  verificarPagamento,
-  monitorarPagamento,
   copiarPix,
   CONFIG
 };
 
-console.log('[PIX Integração] Script carregado com sucesso! (Gateway: PagamentosMP)');
-console.log('[PIX Integração] Use window.PixIntegracao.gerarPix() para gerar um PIX');
+console.log('[PIX] Script carregado! Cada chamada gera um PIX NOVO e único.');
+console.log('[PIX] Use window.PixIntegracao.gerarPix() para gerar um PIX');

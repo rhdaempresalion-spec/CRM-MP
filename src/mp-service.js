@@ -201,31 +201,4 @@ async function gerarPixMP({ valor, nome, email, telefone, documento, referencia 
   }
 }
 
-/**
- * Verifica o status de uma transação na API PagamentosMP
- * 
- * @param {string} transactionId - ID da transação
- * @returns {Object} Dados da transação
- */
-async function verificarTransacaoMP(transactionId) {
-  const PUBLIC_KEY = process.env.MP_PUBLIC_KEY;
-  const SECRET_KEY = process.env.MP_SECRET_KEY;
-  const API_URL = process.env.MP_API_URL || 'https://app.pagamentosmp.com/api/v1';
-
-  const response = await axios.get(
-    `${API_URL}/gateway/transactions`,
-    {
-      params: { id: transactionId },
-      headers: {
-        'x-public-key': PUBLIC_KEY,
-        'x-secret-key': SECRET_KEY,
-        'Accept': 'application/json'
-      },
-      timeout: 15000
-    }
-  );
-
-  return response.data;
-}
-
-module.exports = { gerarPixMP, verificarTransacaoMP };
+module.exports = { gerarPixMP };
