@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIX Webhook - Gerador Automático (PagamentosMP)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 8px;
+      font-size: 28px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .status-badge {
+      display: inline-block;
+      background: #4CAF50;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      color: #555;
+      font-size: 14px;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 15px;
+      transition: border-color 0.3s;
+      outline: none;
+    }
+    input:focus {
+      border-color: #667eea;
+    }
+    .valor-display {
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    .valor-display .valor {
+      font-size: 36px;
+      font-weight: bold;
+    }
+    .valor-display .label {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    #btn-gerar-pix {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+    #btn-gerar-pix:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
+    }
+    #btn-gerar-pix:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    #pix-resultado {
+      margin-top: 20px;
+    }
+    .info-box {
+      background: #f5f5f5;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #666;
+    }
+    .info-box h4 {
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .info-box code {
+      background: #e0e0e0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="text-align: center;">
+      <span class="status-badge">Sistema Online - PagamentosMP</span>
+    </div>
+    
+    <h1>Gerador de PIX</h1>
+    <p class="subtitle">Sistema automático de geração de PIX via PagamentosMP</p>
+
+    <div class="valor-display">
+      <div class="label">Valor do PIX</div>
+      <div class="valor">R$ 12,90</div>
+    </div>
+
+    <div class="form-group">
+      <label for="input-nome">Nome</label>
+      <input type="text" id="input-nome" placeholder="Nome do cliente" value="Cliente Teste">
+    </div>
+
+    <div class="form-group">
+      <label for="input-email">Email</label>
+      <input type="email" id="input-email" placeholder="email@exemplo.com" value="cliente@teste.com">
+    </div>
+
+    <div class="form-group">
+      <label for="input-telefone">Telefone</label>
+      <input type="tel" id="input-telefone" placeholder="11999999999" value="11999999999">
+    </div>
+
+    <div class="form-group">
+      <label for="input-cpf">CPF</label>
+      <input type="text" id="input-cpf" placeholder="000.000.000-00" value="00000000000">
+    </div>
+
+    <button id="btn-gerar-pix">Gerar PIX R$ 12,90</button>
+
+    <div id="pix-resultado"></div>
+
+    <div class="info-box">
+      <h4>Como funciona:</h4>
+      <p>1. Preencha os dados do cliente</p>
+      <p>2. Clique em "Gerar PIX"</p>
+      <p>3. O sistema gera o PIX via API PagamentosMP e envia para o CRM</p>
+      <p>4. O código PIX copia e cola é exibido na tela</p>
+      <br>
+      <p><strong>Endpoints:</strong></p>
+      <p><code>POST /webhook</code> - Receber webhook do CRM</p>
+      <p><code>POST /api/gerar-pix</code> - Gerar PIX via API</p>
+      <p><code>GET /api/status/:id</code> - Verificar pagamento</p>
+      <p><code>POST /webhook/mp-callback</code> - Callback PagamentosMP</p>
+    </div>
+  </div>
+
+  <!-- Configurar URL do backend (auto-detecta) -->
+  <script>
+    window.PIX_BACKEND_URL = window.location.origin;
+  </script>
+  
+  <!-- Script de integração -->
+  <script src="/script-integracao.js"></script>
+</body>
+</html>
